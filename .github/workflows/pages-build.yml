@@ -1,0 +1,84 @@
+name: MARP Builder
+
+on:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - closed
+  push:
+    branches:
+      - main
+  release:
+    types:
+      - published
+
+concurrency:
+  group: marp-to-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+#        with:
+#          fetch-depth: 0
+
+      - name: Ensure the build folder exists
+        run: mkdir -p build
+
+      - name: Copy img folder
+        run: if [[ -d img ]]; then cp -R img build/img; fi
+
+      - name: Marp Build (Copy docs)
+        uses: docker://marpteam/marp-cli:latest
+        with:
+          args: -I docs/ -o build/docs/
+        env:
+          MARP_USER: root:root
+
+      - name: Marp Build (HTML)
+        uses: docker://marpteam/marp-cli:latest
+        with:
+          args: SLIDES.md -o build/index.html
+        env:
+          MARP_USER: root:root
+
+      - name: Marp Build (PDF)
+        uses: docker://marpteam/marp-cli:latest
+        with:
+          args: SLIDES.md --allow-local-files -o build/index.pdf
+        env:
+          MARP_USER: root:root
+
+      - name: Marp Build (PPTX)
+        uses: docker://marpteam/marp-cli:latest
+        with:
+          args: SLIDES.md --allow-local-files -o build/index.pptx
+        env:
+          MARP_USER: root:root
+
+      - name: Deploy preview
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: rossjrw/pr-preview-action@v1
+        with:
+          source-dir: ./build/
+          preview-branch: gh-pages
+          umbrella-dir: pr-preview
+          action: auto
+
+      - name: Deploy production
+        if: ${{ github.event_name == 'push' }}
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: ./build/
+          branch: gh-pages
+          clean-exclude: pr-preview
